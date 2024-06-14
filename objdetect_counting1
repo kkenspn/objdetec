@@ -1,0 +1,81 @@
+import cv2
+import numpy as np
+from ultralytics import YOLO
+
+# Define regions of interest (ROIs) as a list of tuples (x, y, w, h)
+regions = [
+    (100, 300, 400, 350),  # Left region
+    (520, 425, 250, 225),  # Middle region
+    (800, 425, 450, 275),  # Right region
+]
+
+# Function to check if a centroid is within a region
+def is_centroid_in_region(cx, cy, region):
+    rx, ry, rw, rh = region
+    return rx <= cx < rx + rw and ry <= cy < ry + rh
+
+# Load the YOLO model
+model = YOLO(r'C:\Python output\scg\model_- 8 june 2024 18_32.pt')  # Replace with the path to your model weights
+
+# Open the video
+cap = cv2.VideoCapture(r'C:\Python output\scg\part1_1.mp4')  # Raw string literal used here
+
+if not cap.isOpened():
+    print("Error: Could not open video.")
+    exit()
+
+# Initialize lists to store region counts for each frame
+frame_counts = [0] * len(regions)
+is_counting_1 = [False] * len(regions)
+
+while cap.isOpened():
+    ret, frame = cap.read()
+    if not ret:
+        break
+    
+    # Perform object detection
+    results = model(frame)
+    
+    # Initialize counts for each region for the current frame
+    region_counts = [0] * len(regions)
+
+    # Iterate over detected objects
+    for result in results:
+        for box in result.boxes:
+            x1, y1, x2, y2 = map(int, box.xyxy[0])
+            cx = int((x1 + x2) / 2)
+            cy = int((y1 + y2) / 2)
+
+            # Check which region the centroid belongs to
+            for idx, region in enumerate(regions):
+                if is_centroid_in_region(cx, cy, region):
+                    region_counts[idx] += 1
+                    if not is_counting_1[idx]:
+                        is_counting_1[idx] = True
+
+    # Update counts for each region
+    for idx, count in enumerate(region_counts):
+        if is_counting_1[idx] and count == 0:
+            frame_counts[idx] += 1
+            is_counting_1[idx] = False
+
+    # Draw rectangles and counts on the frame
+    for idx, region in enumerate(regions):
+        x, y, w, h = region
+        cv2.rectangle(frame, (x, y), (x + w, y + h), (0, 255, 0), 2)
+        text = f"Region {idx+1}: {frame_counts[idx]}"
+        cv2.putText(frame, text, (x, y - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.9, (0, 0, 255), 2)
+
+    # Display the frame
+    cv2.imshow('Object Counting by Region', frame)
+    
+    if cv2.waitKey(1) & 0xFF == ord('q'):
+        break
+
+# Release resources
+cap.release()
+cv2.destroyAllWindows()
+
+# Print the summary counts for each region
+for idx, count in enumerate(frame_counts):
+    print(f"Region {idx+1} Summary Count: {count}")
