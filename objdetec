@@ -1,29 +1,24 @@
 import cv2
 import numpy as np
+from ultralytics import YOLO
 
-#Define regions of interest (ROIs) as a list of tuples (x, y, w, h)
+# Define regions of interest (ROIs) as a list of tuples (x, y, w, h)
 regions = [
     (100, 300, 400, 350),  # Left region
     (520, 425, 250, 225),  # Middle region
     (800, 425, 450, 275),  # Right region
 ]
 
-#Function to check if a contour's centroid is within a region
-def iscontour_in_region(contour, region):
-    # Calculate the centroid of the contour
-    M = cv2.moments(contour)
-    if M["m00"] != 0:
-        cX = int(M["m10"] / M["m00"])
-        cY = int(M["m01"] / M["m00"])
-    else:
-        cX, cY = 0, 0
-
-#Check if the centroid is within the region
+# Function to check if a centroid is within a region
+def is_centroid_in_region(cx, cy, region):
     rx, ry, rw, rh = region
-    return rx <= cX < rx + rw and ry <= cY < ry + rh
+    return rx <= cx < rx + rw and ry <= cy < ry + rh
 
-#Open the video
-cap = cv2.VideoCapture('D:/scg/testobjcounting.mp4')
+# Load the YOLO model
+model = YOLO('C:\Python output\scg\model_- 8 june 2024 18_32.pt')  # Replace with the path to your model weights
+
+# Open the video
+cap = cv2.VideoCapture('C:/Python output/scg/part1/my _ch3_20240516130024_20240516160049.mp4')
 
 if not cap.isOpened():
     print("Error: Could not open video.")
@@ -34,36 +29,39 @@ while cap.isOpened():
     ret, frame = cap.read()
     if not ret:
         break
-
-#Preprocess the frame
-    gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-    _, thresh = cv2.threshold(gray, 127, 255, cv2.THRESHBINARY_INV)
-
-    # Detect objects (contours)
-    contours,  = cv2.findContours(thresh, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-
-    # Count objects in each region
+    
+    # Perform object detection
+    results = model(frame)
+    
+    # Initialize counts for each region
     region_counts = [0, 0, 0]
-    for contour in contours:
-        for idx, region in enumerate(regions):
-            if is_contour_in_region(contour, region):
-                region_counts[idx] += 1
-                # Draw rectangle around the region
-                x, y, w, h = region
-                cv2.rectangle(frame, (x, y), (x + w, y + h), (0, 255, 0), 2)
-#Draw counts on the frame
-    for idx, regioncount in enumerate(region_counts):
-        x, y, _, _ = regions[idx]
-        text = f"Region {idx+1}: {region_count}"
+
+    # Iterate over detected objects
+    for result in results:
+        for box in result.boxes:
+            x1, y1, x2, y2 = map(int, box.xyxy[0])
+            cx = int((x1 + x2) / 2)
+            cy = int((y1 + y2) / 2)
+
+            # Check which region the centroid belongs to
+            for idx, region in enumerate(regions):
+                if is_centroid_in_region(cx, cy, region):
+                    region_counts[idx] += 1
+
+    # Draw rectangles and counts on the frame
+    for idx, region in enumerate(regions):
+        x, y, w, h = region
+        cv2.rectangle(frame, (x, y), (x + w, y + h), (0, 255, 0), 2)
+        text = f"Region {idx+1}: {region_counts[idx]}"
         cv2.putText(frame, text, (x, y - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.9, (0, 0, 255), 2)
 
     # Display the frame
     cv2.imshow('Object Counting by Region', frame)
     frame_number += 1
-
+    
     if cv2.waitKey(1) & 0xFF == ord('q'):
         break
 
-#Release resources
+# Release resources
 cap.release()
 cv2.destroyAllWindows()
